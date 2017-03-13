@@ -1,0 +1,102 @@
+# Task-based End-to-end Model Learning
+
+This repository is by 
+[Priya L. Donti](https://www.linkedin.com/in/priya-donti-b9080585/),
+[Brandon Amos](http://bamos.github.io),
+and [J. Zico Kolter](http://zicokolter.com)
+and contains the [PyTorch](https://pytorch.org) source code to
+reproduce the experiments in our paper
+[Task-based End-to-end Model Learning](TODO).
+
+<!-- If you find this repository helpful in your publications,
+please consider citing our paper (TODO).
+
+```
+@article{donti2017task-based,
+  title={Task-based End-to-end Model Learning},
+  author={Priya L. Donti and Brandon Amos and J. Zico Kolter},
+  journal={},
+  year={2017}
+}
+``` -->
+
+# Introduction
+
+As machine learning techniques have become more ubiquitous, it has become 
+common to see machine learning prediction algorithms operating within some 
+larger process. However, the criteria by which we train machine learning 
+algorithms often differ from the ultimate criteria on which we evaluate them.
+
+This repository demonstrates an end-to-end approach for learning probabilistic 
+machine learning models within the context of stochastic programming, in a 
+manner that directly captures the ultimate task-based objective for which they 
+will be used. Specifically, we evaluate our approach in the context of
+(a) a generic inventory stock problem and (b) an electrical grid scheduling
+task based on over eight years of data from PJM.
+
+Please see our paper [Task-based End-to-end Model Learning](TODO)
+and the code in this repository ([locuslab/e2e-model-learning](https://github.com/locuslab/e2e-model-learning))
+for more details about the general approach proposed and our initial
+experimental implementations.
+
+
+## Setup and Dependencies
+
++ Python 3.x/numpy/scipy/[cvxpy](http://www.cvxpy.org/en/latest/)
++ [PyTorch](https://pytorch.org)
+  + The code currently requires a source install from the master branch from
+    [our fork](https://github.com/locuslab/pytorch) for new batch triangular
+    factorization functions we have added.
+    We are currently working with the PyTorch team to get these new features
+    merged into Torch proper.
++ [qpth](https://github.com/locuslab/qpth):
+  *A fast QP solver for PyTorch released in conjunction with the paper 
+  [OptNet: Differentiable Optimization as a Layer in Neural Networks](https://arxiv.org/abs/1703.00443).*
++ [bamos/block](https://github.com/bamos/block):
+  *An intelligent block matrix library for numpy, PyTorch, and beyond.*
++ Optional: [bamos/setGPU](https://github.com/bamos/setGPU):
+  A small library to set `CUDA_VISIBLE_DEVICES` on multi-GPU systems.
+
+# Inventory Stock Problem (Newsvendor) Experiments
+
++ Experiments considering a "conditional" variation of the inventory stock
+  problem. Problem instances are generated via random sampling.
+
+```
+newsvendor
+├── main.py - Run inventory stock problem experiments. (See arguments.)
+├── task_net.py - Functions for our task-based end-to-end model learning approach.
+├── mle.py - Functions for maximum likelihood estimation approach.
+├── policy_net.py - Functions for end-to-end (nonlinear) neural network policy model.
+├── batch.py - Helper functions for minibatched evaluation.
+└── plot.py - Plot experimental results.
+```
+
+# Load Forecasting and Generator Scheduling Experiments
+
++ Experiments considering a realistic grid-scheduling task, in which
+  electricity generation is scheduled based on some (unknown) distribution
+  over electricity demand. Historical load data for these experiments was obtained from
+  [PJM](http://www.pjm.com/markets-and-operations/ops-analysis/historical-load-data.aspx).
+
+```
+power_sched
+├── main.py - Run load forecasting problem experiments. (See arguments.)
+├── model_classes.py - Models used for experiments.
+├── nets.py - Functions for RMSE and task nets.
+├── plot.py - Plot experimental results.
+└── pjm_load_data_*.txt - Historical load data from PJM.
+```
+
+
+### Acknowledgments
+
+This material is based upon work supported by the 
+National Science Foundation Graduate Research Fellowship Program under
+Grant No. DGE1252522. 
+
+# Licensing
+
+Unless otherwise stated, the source code is copyright
+Carnegie Mellon University and licensed under the
+[Apache 2.0 License](./LICENSE).
