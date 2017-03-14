@@ -6,19 +6,19 @@ This repository is by
 and [J. Zico Kolter](http://zicokolter.com)
 and contains the [PyTorch](https://pytorch.org) source code to
 reproduce the experiments in our paper
-[Task-based End-to-end Model Learning](TODO).
+[Task-based End-to-end Model Learning](https://arxiv.org/abs/1703.04529).
 
-<!-- If you find this repository helpful in your publications,
-please consider citing our paper (TODO).
+If you find this repository helpful in your publications,
+please consider citing our paper.
 
 ```
-@article{donti2017task-based,
+@article{donti2017task,
   title={Task-based End-to-end Model Learning},
   author={Priya L. Donti and Brandon Amos and J. Zico Kolter},
-  journal={},
+  journal={arXiv preprint arXiv:1703.04529},
   year={2017}
 }
-``` -->
+```
 
 # Introduction
 
@@ -34,7 +34,7 @@ will be used. Specifically, we evaluate our approach in the context of
 (a) a generic inventory stock problem and (b) an electrical grid scheduling
 task based on over eight years of data from PJM.
 
-Please see our paper [Task-based End-to-end Model Learning](TODO)
+Please see our paper [Task-based End-to-end Model Learning](https://arxiv.org/abs/1703.04529)
 and the code in this repository ([locuslab/e2e-model-learning](https://github.com/locuslab/e2e-model-learning))
 for more details about the general approach proposed and our initial
 experimental implementations.
