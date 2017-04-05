@@ -117,7 +117,7 @@ class SolveSchedulingQP(nn.Module):
         G = self.G.unsqueeze(0).expand(nBatch, self.G.size(0), self.G.size(1))
         h = self.h.unsqueeze(0).expand(nBatch, self.h.size(0))
         
-        out = QPFunction(verbose=False)(p, Q, G, h, self.e, self.e)
+        out = QPFunction(verbose=False)(Q, p, G, h, self.e, self.e)
         return out
 
 

@@ -51,7 +51,7 @@ class SolveNewsvendor(nn.Module):
         e = Variable(torch.Tensor().cuda()).double()
 
         out = QPFunction(verbose=False)\
-            (p.double(), Q.double(), G.double(), h.double(), e, e).float()
+            (Q.double(), p.double(), G.double(), h.double(), e, e).float()
 
         return out[:,:1]
 

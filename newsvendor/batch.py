@@ -8,10 +8,6 @@ from torch.autograd import Variable, Function
 import torch.optim as optim
 import torch.cuda
 
-import importlib
-import qpth
-from qpth.qp import QPFunction
-
 from block import block
 
 def get_vars(batch_sz, X_test_t, Y_test_t):
