@@ -75,8 +75,8 @@ def main():
         # Randomly construct hold-out set for task net training.
         th_frac = 0.8
         inds = np.random.permutation(X_train.shape[0])
-        train_inds = inds[ :X_train.shape[0] * th_frac]
-        hold_inds = inds[X_train.shape[0] * th_frac:]
+        train_inds = inds[ :int(X_train.shape[0] * th_frac)]
+        hold_inds = inds[int(X_train.shape[0] * th_frac):]
         X_train2, X_hold2 = X_train[train_inds, :], X_train[hold_inds, :]
         Y_train2, Y_hold2 = Y_train[train_inds, :], Y_train[hold_inds, :]
         X_train2_ = Variable(torch.Tensor(X_train2[:,:-1])).cuda()

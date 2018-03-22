@@ -12,6 +12,8 @@ import torch.cuda
 
 import model_classes
 
+import ipdb
+
 
 def task_loss(Y_sched, Y_actual, params):
     return (params["gamma_under"] * torch.clamp(Y_actual - Y_sched, min=0) + 
@@ -20,7 +22,7 @@ def task_loss(Y_sched, Y_actual, params):
 
 
 def rmse_loss(mu_pred, Y_actual):
-    return ((mu_pred - Y_actual)**2).mean(dim=0).sqrt().data.cpu().numpy()[0]
+    return ((mu_pred - Y_actual)**2).mean(dim=0).sqrt().data.cpu().numpy()
 
 
 # TODO: minibatching
@@ -139,7 +141,6 @@ def eval_net(which, model, variables, params, save_folder):
             os.path.join(save_folder, '{}_hold_rmse'.format(which)), 'wb') as f:
             np.save(f, hold_rmse)
 
-
     # Eval model on task loss
     Y_sched_train = solver(mu_pred_train.double(), sig_pred_train.double())
     train_loss_task = task_loss(
@@ -154,12 +155,17 @@ def eval_net(which, model, variables, params, save_folder):
         hold_loss_task = task_loss(
             Y_sched_hold.float(), variables['Y_hold_'], params)
 
-
-    torch.save(train_loss_task.data[0], 
+    # torch.save(train_loss_task.data[0], 
+    #     os.path.join(save_folder, '{}_train_task'.format(which)))
+    # torch.save(test_loss_task.data[0], 
+    #     os.path.join(save_folder, '{}_test_task'.format(which)))
+    torch.save(train_loss_task.data, 
         os.path.join(save_folder, '{}_train_task'.format(which)))
-    torch.save(test_loss_task.data[0], 
+    torch.save(test_loss_task.data, 
         os.path.join(save_folder, '{}_test_task'.format(which)))
 
     if (which == "task_net"):
-        torch.save(hold_loss_task.data[0], 
+        # torch.save(hold_loss_task.data[0], 
+        #     os.path.join(save_folder, '{}_hold_task'.format(which)))
+        torch.save(hold_loss_task.data, 
             os.path.join(save_folder, '{}_hold_task'.format(which)))

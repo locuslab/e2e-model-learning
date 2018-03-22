@@ -15,6 +15,8 @@ import torch.cuda
 import qpth
 from qpth.qp import QPFunction
 
+import ipdb
+
 class Net(nn.Module):
     def __init__(self, X, Y, hidden_layer_sizes):
         super(Net, self).__init__()
@@ -45,7 +47,7 @@ class Net(nn.Module):
     def set_sig(self, X, Y):
         Y_pred = self.lin(X) + self.net(X)
         var = torch.mean((Y_pred-Y)**2, 0)
-        self.sig.data = torch.sqrt(var).cuda().data
+        self.sig.data = torch.sqrt(var).cuda().data.unsqueeze(0)
 
 
 class GLinearApprox(Function):
