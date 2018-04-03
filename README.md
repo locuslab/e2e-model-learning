@@ -57,6 +57,8 @@ experimental implementations.
 + Optional: [bamos/setGPU](https://github.com/bamos/setGPU):
   A small library to set `CUDA_VISIBLE_DEVICES` on multi-GPU systems.
 
+**Note:** Experiments are currently not working after some library updates. We'll address this ASAP. 
+
 # Inventory Stock Problem (Newsvendor) Experiments
 
 + Experiments considering a "conditional" variation of the inventory stock
@@ -66,8 +68,9 @@ experimental implementations.
 newsvendor
 ├── main.py - Run inventory stock problem experiments. (See arguments.)
 ├── task_net.py - Functions for our task-based end-to-end model learning approach.
-├── mle.py - Functions for maximum likelihood estimation approach.
-├── policy_net.py - Functions for end-to-end (nonlinear) neural network policy model.
+├── mle.py - Functions for linear maximum likelihood estimation approach.
+├── mle_net.py - Functions for nonlinear maximum likelihood estimation approach.
+├── policy_net.py - Functions for end-to-end neural network policy model.
 ├── batch.py - Helper functions for minibatched evaluation.
 └── plot.py - Plot experimental results.
 ```
@@ -76,16 +79,33 @@ newsvendor
 
 + Experiments considering a realistic grid-scheduling task, in which
   electricity generation is scheduled based on some (unknown) distribution
-  over electricity demand. Historical load data for these experiments was obtained from
+  over electricity demand. Historical load data for these experiments were obtained from
   [PJM](http://www.pjm.com/markets-and-operations/ops-analysis/historical-load-data.aspx).
 
 ```
 power_sched
 ├── main.py - Run load forecasting problem experiments. (See arguments.)
 ├── model_classes.py - Models used for experiments.
-├── nets.py - Functions for RMSE and task nets.
+├── nets.py - Functions for RMSE, cost-weighted RMSE, and task nets.
 ├── plot.py - Plot experimental results.
 └── pjm_load_data_*.txt - Historical load data from PJM.
+```
+
+# Price Forecasting and Battery Storage Experiments
+
++ Experiments considering a realistic battery arbitrage task, in which
+  a power grid-connected battery generates a charge/discharge schedule 
+  based on some (unknown) distribution
+  over energy prices. Historical energy price data for these experiments were obtained from
+  [PJM](http://www.pjm.com/markets-and-operations/energy/real-time/monthlylmp.aspx).
+
+```
+battery_storage
+├── main.py - Run battery storage problem experiments. (See arguments.)
+├── model_classes.py - Models used for experiments.
+├── nets.py - Functions for RMSE and task nets.
+├── calc_stats.py - Calculate experimental result stats.
+└── storage_data.csv - Historical energy price data from PJM.
 ```
 
 
