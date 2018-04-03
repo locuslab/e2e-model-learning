@@ -19,7 +19,6 @@ from block import block
 
 import batch
 
-
 class SolveNewsvendor(nn.Module):
     """ Solve newsvendor scheduling problem """
     def __init__(self, params, eps=1e-2):
@@ -43,8 +42,9 @@ class SolveNewsvendor(nn.Module):
     def forward(self, y):
         nBatch, k = y.size()
 
+        eps2 = 1e-8
         Q_scale = torch.cat([torch.diag(torch.cat(
-            [self.one, y[i], y[i]])).unsqueeze(0) for i in range(nBatch)], 0)
+            [self.one, y[i]+eps2, y[i]+eps2])).unsqueeze(0) for i in range(nBatch)], 0)
         Q = self.Q.unsqueeze(0).expand_as(Q_scale).mul(Q_scale)
         p_scale = torch.cat([Variable(torch.ones(nBatch,1).cuda()), y, y], 1)
         p = self.p.unsqueeze(0).expand_as(p_scale).mul(p_scale)
@@ -58,7 +58,24 @@ class SolveNewsvendor(nn.Module):
         return out[:,:1]
 
 
-def run_task_net(X, Y, X_test, Y_test, params, is_nonlinear=False):
+def get_model(X_train, Y_train, X_test, Y_test, params, is_nonlinear):
+    if is_nonlinear:
+        # Non-linear model, use ADAM step size 1e-3
+        layer_sizes = [X_train.shape[1], 200, 200, Y_train.shape[1]]
+        layers = reduce(operator.add, [[nn.Linear(a,b), nn.BatchNorm1d(b), 
+                                        nn.ReLU(), nn.Dropout(p=0.5)]
+                          for a,b in zip(layer_sizes[0:-2], layer_sizes[1:-1])])
+        layers += [nn.Linear(layer_sizes[-2], layer_sizes[-1]), nn.Softmax()]
+        return nn.Sequential(*layers).cuda()
+    else:
+        # Linear model, use ADAM step size 1e-2
+        return nn.Sequential(
+            nn.Linear(X_train.shape[1], Y_train.shape[1]),
+            nn.Softmax()
+        ).cuda()
+
+
+def run_mle_net(X, Y, X_test, Y_test, params, is_nonlinear=False):
 
     # Training/validation split
     th_frac = 0.8
@@ -94,9 +111,6 @@ def run_task_net(X, Y, X_test, Y_test, params, is_nonlinear=False):
     newsvendor_solve = SolveNewsvendor(params).cuda()
     cost_news_fn = lambda x, y: cost(newsvendor_solve(x), y)
 
-    nll = nn.NLLLoss().cuda()
-    lam = 10.0  # regularization
-
     if is_nonlinear:
         # Non-linear model, use ADAM step size 1e-3
         layer_sizes = [X_train.shape[1], 200, 200, Y_train.shape[1]]
@@ -118,47 +132,57 @@ def run_task_net(X, Y, X_test, Y_test, params, is_nonlinear=False):
 
     # For early stopping
     hold_costs, test_costs = [], []
+    model_states = []
     num_stop_rounds = 20
 
     for i in range(1000):
-        model.eval()
-        test_cost = batch.get_cost(
-            100, i, model, X_test_t, Y_test_t, cost_news_fn)
-        test_nll = batch.get_cost_nll(
-            100, i, model, X_test_t, Y_test_int_t, nll)
+        # model.eval()
 
-        hold_cost = batch.get_cost(
-            100, i, model, X_hold_t, Y_hold_t, cost_news_fn)
-        hold_nll  = batch.get_cost_nll(
-            100, i, model, X_hold_t, Y_hold_int_t, nll)
+        test_cost = batch.get_cost_nll(
+            100, i, model, X_test_t, Y_test_int_t, nn.NLLLoss())
+
+        hold_cost = batch.get_cost_nll(
+            100, i, model, X_hold_t, Y_hold_int_t, nn.NLLLoss())
 
         model.train()
-        train_cost, train_nll = batch_train(150, i, X_train_t, Y_train_t, 
-            Y_train_int_t, model, cost_news_fn, nll, opt, lam)
+        train_cost = batch_train(150, i, X_train_t, Y_train_t, 
+            Y_train_int_t, model, nn.NLLLoss(), opt)
 
-        print(i, train_cost.data[0], train_nll.data[0], test_cost.data[0], 
-              test_nll.data[0], hold_cost.data[0], hold_nll.data[0])
+
+        print(i, train_cost.data[0], test_cost.data[0], 
+              hold_cost.data[0])
 
         # Early stopping
+        # See https://github.com/locuslab/e2e-model-learning-staging/commit/d183c65d0cd53d611a77a4508da65c25cf88c93d
         test_costs.append(test_cost.data[0])
         hold_costs.append(hold_cost.data[0])
+        model_states.append(model.state_dict().copy())
         if i > 0 and i % num_stop_rounds == 0:
             idx = hold_costs.index(min(hold_costs))
             # Stop if current cost is worst in num_stop_rounds rounds
             if max(hold_costs) == hold_cost.data[0]:
-                print(test_costs[idx])
-                return(test_costs[idx])
+                model.eval()
+                best_model = get_model(X_train, Y_train, X_test, Y_test, params, is_nonlinear)
+                best_model.load_state_dict(model_states[idx])
+                best_model.cuda()
+                test_cost_news = batch.get_cost(100, i, best_model, X_test_t, Y_test_t, cost_news_fn)
+                return test_cost_news.data[0]
             else:
                 # Keep only "best" round
                 hold_costs = [hold_costs[idx]]
                 test_costs = [test_costs[idx]]
+                model_states = [model_states[idx]]
 
-    # In case of no early stopping, return best run so far
+    # # In case of no early stopping, return best run so far
     idx = hold_costs.index(min(hold_costs))
-    return test_costs[idx]
+    best_model = get_model(X, Y, X_test, Y_test, params, is_nonlinear)
+    best_model.load_state_dict(model_states[idx])
+    best_model.cuda()
+    test_cost_news = batch.get_cost(100, i, best_model, X_test_t, Y_test_t, cost_news_fn)
+    return test_cost_news.data[0]
 
 def batch_train(batch_sz, epoch, X_train_t, Y_train_t, Y_train_int_t,
-    model, cost_fn_news, nll, opt, lam):
+    model, nll, opt):
 
     train_cost_agg = 0
     train_nll_agg = 0
@@ -185,21 +209,18 @@ def batch_train(batch_sz, epoch, X_train_t, Y_train_t, Y_train_int_t,
 
         opt.zero_grad()
         preds = model(batch_data_)
-        train_cost = cost_fn_news(preds, batch_targets_)
         train_nll  = nll(preds, batch_targets_int_)
 
-        (train_cost + lam * train_nll).backward()
+        (train_nll).backward()
         opt.step()
 
         # Keep running average of losses
-        train_cost_agg += \
-            (train_cost - train_cost_agg) * batch_sz / (i + batch_sz)
         train_nll_agg += \
             (train_nll - train_nll_agg) * batch_sz / (i + batch_sz)
 
         print('Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
             epoch, i+batch_sz, X_train_t.size(0),
             float(i+batch_sz)/X_train_t.size(0)*100,
-            train_cost.data[0]))
+            train_nll.data[0]))
 
-    return train_cost_agg, train_nll_agg
+    return train_nll_agg

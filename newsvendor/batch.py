@@ -27,6 +27,7 @@ def get_vars_scalar_out(batch_sz, X_test_t, Y_test_t):
 # General batch evaluation
 def get_cost_helper(batch_sz, epoch, model, X_test_t, Y_test_t, 
     loss_fn, var_getter_fn):
+
     test_cost = 0
 
     batch_data_, batch_targets_ = var_getter_fn(

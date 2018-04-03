@@ -9,6 +9,7 @@ import os
 
 from datetime import datetime
 
+import importlib
 try: import setGPU
 except ImportError: pass
 
@@ -17,12 +18,7 @@ from torch.autograd import Variable
 
 import setproctitle
 
-import sys
-from IPython.core import ultratb
-sys.excepthook = ultratb.FormattedTB(mode='Verbose',
-     color_scheme='Linux', call_pdb=1)
-
-import mle, policy_net, task_net, plot
+import mle, mle_net, policy_net, task_net, plot
 
 
 def main():
@@ -33,7 +29,7 @@ def main():
     parser.add_argument('--nRuns', type=int, default=10,
         metavar='runs', help='number of runs')
     parser.add_argument('--trueModel', type=str, 
-        choices=['linear', 'nonlinear'], default='linear', 
+        choices=['linear', 'nonlinear', 'both'], default='both', 
         help='true y|x distribution')
     args = parser.parse_args()
 
@@ -41,108 +37,138 @@ def main():
 
     if not os.path.exists(args.save):
         os.makedirs(args.save)
-    results_file = os.path.join(args.save, 
-        'inventory_results_{}.csv'.format(args.trueModel))
 
     # Cost params for newsvendor task loss
     params = init_newsvendor_params()
 
-    # Randomly generate true params for p(y|x;θ).
-    # Set with_seed=True to replicate paper true params.
-    Theta_true_lin, Theta_true_sq = init_theta_true(
-        params, is_linear=(args.trueModel == 'linear'), with_seed=True)
+    true_model_types = ['linear', 'nonlinear'] if args.trueModel == 'both' else [args.trueModel]
 
-    # Test data. Set with_seed=True to replicate paper test data.
-    X_test, Y_test = gen_data(1000, params, Theta_true_lin, Theta_true_sq,
-                              with_seed=True)
+    for true_model in true_model_types:
 
-    # MLE with true params
-    f_eval_mle_t, z_buy_t, f_opt_t = mle.newsvendor_eval(
-        X_test, Y_test, Theta_true_lin, Theta_true_sq, params)
-    print(np.mean(f_eval_mle_t))
-    mle_true_score = np.mean(f_eval_mle_t)
+        save_folder = os.path.join(args.save, true_model)
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
 
-    with open(results_file, 'w') as f:
-        f.write('{},{}\n'.format('mle_true:', mle_true_score))
-        f.write('{},{},{},{},{}\n'.format(
-            'm', 'mle', 'policy', 'task-linear', 'task-nonlinear'))
+        results_file = os.path.join(save_folder, 'inventory_results.csv')
 
-    for run in range(args.nRuns):
-        for m in [100, 200, 300, 500, 1000, 3000, 5000, 10000]:
+        # Randomly generate true params for p(y|x;\theta).
+        # Set with_seed=True to replicate paper true params.
+        Theta_true_lin, Theta_true_sq = init_theta_true(
+            params, is_linear=(true_model == 'linear'), with_seed=True)
 
-            with open(results_file, 'a') as f:
-                f.write('\n{},'.format(m))
+        # Test data. Set with_seed=True to replicate paper test data.
+        X_test, Y_test = gen_data(1000, params, Theta_true_lin, Theta_true_sq,
+                                  with_seed=True)
 
-            # Generate data based on true params
-            try:
-                X, Y = gen_data(m, params, Theta_true_lin, Theta_true_sq)
-            except Exception as e:
-                log_error_and_write(e, args, m, run, 'gen', 
-                    results_file, newline=True)
+        # MLE with true params
+        f_eval_mle_t, z_buy_t, f_opt_t = mle.newsvendor_eval(
+            X_test, Y_test, Theta_true_lin, Theta_true_sq, params)
+        print(np.mean(f_eval_mle_t))
+        mle_true_score = np.mean(f_eval_mle_t)
 
+        with open(results_file, 'w') as f:
+            f.write('{},{}\n'.format('mle_true:', mle_true_score))
+            f.write('{},{},{},{},{},{},{}\n'.format(
+                'm', 'mle-linear', 'mle-nonlinear', 'policy-linear', 'policy-nonlinear', 'task-linear', 'task-nonlinear'))
 
-            # MLE with linear softmax regression
-            try:
-                Theta_est = mle.linear_softmax_reg(X, Y, params)
-                f_eval_mle, z_buy, f_opt = \
-                    mle.newsvendor_eval(X_test, Y_test, Theta_est, 
-                        np.zeros((params['n'], len(params['d']))),
-                        params)
-                mle_score = np.mean(f_eval_mle)
+        for run in range(args.nRuns):
+            for m in [100, 200, 300, 500, 1000, 3000, 5000, 10000]:
 
-                print(mle_score)
                 with open(results_file, 'a') as f:
-                    f.write('{},'.format(mle_score))
-            except Exception as e:
-                log_error_and_write(e, args, m, run, 'mle', results_file)
+                    f.write('\n{},'.format(m))
 
-            # Pure end-to-end policy neural net
-            try:
-                policy_score = policy_net.run_policy_net(
-                    X, Y, X_test, Y_test, params)
+                # Generate data based on true params
+                try:
+                    X, Y = gen_data(m, params, Theta_true_lin, Theta_true_sq)
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, 'gen', 
+                        results_file, newline=True)
 
-                print(policy_score)
-                with open(results_file, 'a') as f:
-                    f.write('{},'.format(policy_score))
-            except Exception as e:
-                log_error_and_write(e, args, m, run, 'policy', results_file)
+                # MLE with linear softmax regression
+                try:
+                    Theta_est = mle.linear_softmax_reg(X, Y, params)
+                    f_eval_mle, z_buy, f_opt = \
+                        mle.newsvendor_eval(X_test, Y_test, Theta_est, 
+                            np.zeros((params['n'], len(params['d']))),
+                            params)
+                    mle_score = np.mean(f_eval_mle)
+
+                    print(mle_score)
+                    with open(results_file, 'a') as f:
+                        f.write('{},'.format(mle_score))
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, 'mle-linear', results_file)
 
 
-            # Model-based end-to-end model (linear)
-            try:
-                e2e_lin_score = task_net.run_task_net(
-                    X, Y, X_test, Y_test, params)
+                # Nonlinear MLE net
+                try:
+                    mle_nonlin_score = mle_net.run_mle_net(
+                            X, Y, X_test, Y_test, params)
 
-                print(e2e_lin_score)
-                with open(results_file, 'a') as f:
-                    f.write('{},'.format(e2e_lin_score))
-            except Exception as e:
-                log_error_and_write(e, args, m, run, 
-                    'task-linear', results_file)
+                    print(mle_nonlin_score)
+                    with open(results_file, 'a') as f:
+                        f.write('{},'.format(mle_nonlin_score))
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, 
+                        'mle-nonlinear', results_file)
 
-            # Model-based end-to-end model (nonlinear)
-            try:
-                e2e_nonlin_score = task_net.run_task_net(
-                    X, Y, X_test, Y_test, params, is_nonlinear=True)
 
-                print(e2e_nonlin_score)
-                with open(results_file, 'a') as f:
-                    f.write('{}\n'.format(e2e_nonlin_score))
-            except Exception as e:
-                log_error_and_write(e, args, m, run, results_file, 
-                    'task-nonlinear', newline=True)
+                # Pure end-to-end policy neural net (linear)
+                try:
+                    policy_lin_score = policy_net.run_policy_net(
+                            X, Y, X_test, Y_test, params)
 
-            # Plot results as we go
-            try:
-                plot.plot_results(args.save, args.trueModel)
-            except Exception as e:
-                with open(os.path.join(args.save, 
-                    'errors-{}.log'.format(args.trueModel)), 'a') as f:
-                    f.write('{}: m {}, model {}, run {}: {}\n'.format(
-                        datetime.now(), m, 'plot', run, e))
+                    print(policy_lin_score)
+                    with open(results_file, 'a') as f:
+                            f.write('{},'.format(policy_lin_score))
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, 'policy-linear', results_file)
 
-    # Plot results
-    plot.plot_results(args.save, args.trueModel)
+
+                # Pure end-to-end policy neural net (nonlinear)
+                try:
+                    policy_nonlin_score = policy_net.run_policy_net(
+                            X, Y, X_test, Y_test, params, is_nonlinear=True)
+
+                    print(policy_nonlin_score)
+                    with open(results_file, 'a') as f:
+                        f.write('{},'.format(policy_nonlin_score))
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, 'policy-nonlinear', results_file)
+
+
+                # Model-based end-to-end model (linear)
+                try:
+                    e2e_lin_score = task_net.run_task_net(
+                        X, Y, X_test, Y_test, params)
+
+                    print(e2e_lin_score)
+                    with open(results_file, 'a') as f:
+                        f.write('{},'.format(e2e_lin_score))
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, 
+                        'task-linear', results_file)
+
+                # Model-based end-to-end model (nonlinear)
+                try:
+                    e2e_nonlin_score = task_net.run_task_net(
+                        X, Y, X_test, Y_test, params, is_nonlinear=True)
+
+                    print(e2e_nonlin_score)
+                    with open(results_file, 'a') as f:
+                        f.write('{}\n'.format(e2e_nonlin_score))
+                except Exception as e:
+                    log_error_and_write(e, save_folder, m, run, results_file, 
+                        'task-nonlinear', newline=True)
+
+                # Plot results as we go
+                try:
+                    plot.plot_results(save_folder, true_model)
+                except Exception as e:
+                    with open(os.path.join(save_folder, 
+                        'errors.log'), 'a') as f:
+                        f.write('{}: m {}, model {}, run {}: {}\n'.format(
+                            datetime.now(), m, 'plot', run, e))
     
 
 
@@ -203,9 +229,9 @@ def gen_data(m, params, Theta_true_lin, Theta_true_sq, with_seed=False):
 
     return X, Y
 
-def log_error_and_write(e, args, m, run, model, results_file, newline=False):
-    with open(os.path.join(args.save, 
-        'errors-{}.log'.format(args.trueModel)), 'a') as f:
+
+def log_error_and_write(e, save_folder, m, run, model, results_file, newline=False):
+    with open(os.path.join(save_folder, 'errors.log'), 'a') as f:
         f.write('{}: m {}, model {}, run {}: {}\n'.format(
             datetime.now(), m, model, run, e))
     with open(results_file, 'a') as f:

@@ -10,17 +10,24 @@ from functools import reduce
 
 import batch
 
-def run_policy_net(X_train, Y_train, X_test, Y_test, params):
+def run_policy_net(X_train, Y_train, X_test, Y_test, params, is_nonlinear=False):
 
-    # Set up non-linear network of 
-    # Linear -> BatchNorm -> ReLU -> Dropout layers
-    layer_sizes = [params['n'], 200, 200, 1]
-    layers = reduce(operator.add, 
-                    [[nn.Linear(a,b), nn.BatchNorm1d(b), nn.ReLU(),
-                        nn.Dropout(p=0.2)]
-                    for a,b in zip(layer_sizes[0:-2], layer_sizes[1:-1])])
-    layers += [nn.Linear(layer_sizes[-2], layer_sizes[-1])]
-    model = nn.Sequential(*layers).cuda()
+    if is_nonlinear:
+        # Non-linear model, use ADAM step size 1e-3
+        layer_sizes = [params['n'], 200, 200, 1]
+        layers = reduce(operator.add, [[nn.Linear(a,b), nn.BatchNorm1d(b), 
+                                        nn.ReLU(), nn.Dropout(p=0.2)]   # TODO: Why is this 0.2? (others are 0.5)
+                          for a,b in zip(layer_sizes[0:-2], layer_sizes[1:-1])])
+        layers += [nn.Linear(layer_sizes[-2], layer_sizes[-1])]
+        model = nn.Sequential(*layers).cuda()
+        step_size = 1e-3
+    else:
+        # Linear model, use ADAM step size 1e-2
+        model = nn.Sequential(
+            nn.Linear(params['n'], 1)
+        ).cuda()
+        step_size = 1e-2
+
 
     X_train_t = torch.Tensor(X_train).cuda()
     Y_train_t = torch.Tensor(Y_train).cuda()
@@ -30,15 +37,16 @@ def run_policy_net(X_train, Y_train, X_test, Y_test, params):
 
     # Expected inventory cost
     cost = lambda Z, Y : (params['c_lin'] * Z + 0.5 * params['c_quad'] * (Z**2) +
-                      params['b_lin'] * (Y.mv(d_)-Z).clamp(min=0) +
-                      0.5 * params['b_quad'] * (Y.mv(d_)-Z).clamp(min=0)**2 +
-                      params['h_lin'] * (Z-Y.mv(d_)).clamp(min=0) +
-                      0.5 * params['h_quad'] * (Z-Y.mv(d_)).clamp(min=0)**2) \
+                      params['b_lin'] * (Y.mv(d_).view(-1,1)-Z).clamp(min=0) +
+                      0.5 * params['b_quad'] * (Y.mv(d_).view(-1,1)-Z).clamp(min=0)**2 +
+                      params['h_lin'] * (Z-Y.mv(d_).view(-1,1)).clamp(min=0) +
+                      0.5 * params['h_quad'] * (Z-Y.mv(d_).view(-1,1)).clamp(min=0)**2) \
                     .mean()
 
-    opt = optim.Adam(model.parameters(), lr=1e-3)
+    opt = optim.Adam(model.parameters(), lr=step_size)
 
     for i in range(1000):
+
         model.eval()
         test_cost = batch.get_cost(100, i, model, X_test_t, Y_test_t, cost)
 
