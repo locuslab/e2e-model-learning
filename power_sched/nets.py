@@ -20,9 +20,16 @@ def task_loss(Y_sched, Y_actual, params):
             params["gamma_over"] * torch.clamp(Y_sched - Y_actual, min=0) + 
             0.5 * (Y_sched - Y_actual)**2).mean(0)
 
+def task_loss_no_mean(Y_sched, Y_actual, params):
+    return (params["gamma_under"] * torch.clamp(Y_actual - Y_sched, min=0) + 
+        params["gamma_over"] * torch.clamp(Y_sched - Y_actual, min=0) + 
+        0.5 * (Y_sched - Y_actual)**2)
 
 def rmse_loss(mu_pred, Y_actual):
     return ((mu_pred - Y_actual)**2).mean(dim=0).sqrt().data.cpu().numpy()
+
+def rmse_loss_weighted(mu_pred, Y_actual, weights):
+    return ((weights * (mu_pred - Y_actual)**2).mean(dim=0).sqrt()).sum()
 
 
 # TODO: minibatching
@@ -48,6 +55,72 @@ def run_rmse_net(model, variables, X_train, Y_train):
 
     return model
 
+
+def run_weighted_rmse_net(X_train, Y_train, X_test, Y_test, params):
+    weights = Variable(torch.ones(Y_train.shape), requires_grad=False).cuda()
+    for i in range(10):
+        model, weights2 = run_weighted_rmse_net_helper(X_train, Y_train, X_test, Y_test, params, weights, i)
+        weights = Variable(weights2.data, requires_grad=False)
+    return model
+
+def run_weighted_rmse_net_helper(X_train, Y_train, X_test, Y_test, params, weights, i):
+    X_train_ = Variable(torch.Tensor(X_train[:,:-1])).cuda()
+    Y_train_ = Variable(torch.Tensor(Y_train)).cuda()
+    X_test_ = Variable(torch.Tensor(X_test[:,:-1])).cuda()
+    Y_test_ = Variable(torch.Tensor(Y_test)).cuda()
+
+    model = model_classes.Net(X_train[:,:-1], Y_train, [200, 200])
+    model.cuda()
+    opt = optim.Adam(model.parameters(), lr=1e-3)
+    solver = model_classes.SolveScheduling(params)
+    for j in range(100):
+
+        model.train()
+        batch_train_weightrmse(100, i*100 + j, X_train_.data, Y_train_.data, model, opt, weights.data)
+
+    # Rebalance weights
+    model.eval()
+    mu_pred_train, sig_pred_train = model(X_train_)
+    Y_sched_train = solver(mu_pred_train.double(), sig_pred_train.double())
+    weights2 = task_loss_no_mean(
+        Y_sched_train.float(), Y_train_, params).cuda()
+    model.set_sig(X_train_, Y_train_)
+
+    return model, weights2
+
+def batch_train_weightrmse(batch_sz, epoch, X_train_t, Y_train_t, model, opt, weights_t):
+
+    batch_data_ = Variable(torch.Tensor(batch_sz, X_train_t.size(1)), 
+        requires_grad=False).cuda()
+    batch_targets_ = Variable(torch.Tensor(batch_sz, Y_train_t.size(1)), 
+        requires_grad=False).cuda()
+    batch_weights_ = Variable(torch.Tensor(batch_sz, weights_t.size(1)),
+        requires_grad=False).cuda()
+
+    size = batch_sz
+
+    for i in range(0, X_train_t.size(0), batch_sz):
+
+        # Deal with potentially incomplete (last) batch
+        if i + batch_sz  > X_train_t.size(0):
+            size = X_train_t.size(0) - i
+            batch_data_ = Variable(torch.Tensor(size, X_train_t.size(1)), requires_grad=False).cuda()
+            batch_targets_ = Variable(torch.Tensor(size, Y_train_t.size(1)), requires_grad=False).cuda()
+            batch_weights_ = Variable(torch.Tensor(size, weights_t.size(1)), requires_grad=False).cuda()
+
+        batch_data_.data[:] = X_train_t[i:i+size]
+        batch_targets_.data[:] = Y_train_t[i:i+size]
+        batch_weights_.data[:] = weights_t[i:i+size]
+
+        opt.zero_grad()
+        preds = model(batch_data_)[0]
+
+        ((batch_weights_ * (preds - batch_targets_)**2).mean(dim=0).sqrt()).sum().backward()
+
+        opt.step()
+
+        print ('Epoch: {}, {}/{}'.format(epoch, i+batch_sz, X_train_t.size(0)))
+       
 
 # TODO: minibatching
 def run_task_net(model, variables, params, X_train, Y_train, args):
@@ -84,10 +157,6 @@ def run_task_net(model, variables, params, X_train, Y_train, args):
 
         print(i, train_loss.sum().data[0], test_loss.sum().data[0], 
             hold_loss.sum().data[0])
-
-        with open(os.path.join(args.save, 'task_losses.txt'), 'a') as f:
-            f.write('{} {} {} {}\n'.format(i, train_loss.sum().data[0], 
-                test_loss.sum().data[0], hold_loss.sum().data[0]))
 
 
         # Early stopping
@@ -155,17 +224,11 @@ def eval_net(which, model, variables, params, save_folder):
         hold_loss_task = task_loss(
             Y_sched_hold.float(), variables['Y_hold_'], params)
 
-    # torch.save(train_loss_task.data[0], 
-    #     os.path.join(save_folder, '{}_train_task'.format(which)))
-    # torch.save(test_loss_task.data[0], 
-    #     os.path.join(save_folder, '{}_test_task'.format(which)))
     torch.save(train_loss_task.data, 
         os.path.join(save_folder, '{}_train_task'.format(which)))
     torch.save(test_loss_task.data, 
         os.path.join(save_folder, '{}_test_task'.format(which)))
 
     if (which == "task_net"):
-        # torch.save(hold_loss_task.data[0], 
-        #     os.path.join(save_folder, '{}_hold_task'.format(which)))
         torch.save(hold_loss_task.data, 
             os.path.join(save_folder, '{}_hold_task'.format(which)))

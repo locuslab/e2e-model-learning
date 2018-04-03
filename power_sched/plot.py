@@ -14,15 +14,12 @@ import seaborn as sns
 import torch
 
 def load_results(load_folders):
-    array_files = ['rmse_net_train_rmse', 'rmse_net_test_rmse', 
-        'task_net_train_rmse', 'task_net_test_rmse']
-    float_tensor_files = ['rmse_net_train_task', 'rmse_net_test_task', 
-        'task_net_train_task', 'task_net_test_task']
-    col_names = ['RMSE Net (train)', 'RMSE Net (test)', 
-        'Task Net (train)', 'Task Net (test)']
+    array_files = ['task_net_test_rmse', 'rmse_net_test_rmse', 'weighted_rmse_net_test_rmse']
+    float_tensor_files = ['task_net_test_task', 'rmse_net_test_task', 'weighted_rmse_net_test_task']
+    col_names = ['Task-based', 'RMSE', 'Cost-weighted RMSE']
 
     df_rmse = pd.DataFrame()
-    df_task_net = pd.DataFrame()
+    df_task = pd.DataFrame()
     for folder in load_folders:
         arrays, tensors = [], []
             
@@ -39,36 +36,42 @@ def load_results(load_folders):
         
         df = pd.DataFrame(pd.DataFrame(tensors).T)
         df.columns = col_names
-        df_task_net = df_task_net.append(df)
+        df_task = df_task.append(df)
 
-    return df_rmse, df_task_net
+    return df_rmse, df_task
 
 def get_means_stds(df):
     return df.groupby(df.index).mean(), df.groupby(df.index).std()
 
 def plot_results(load_folders, save_folder):
-    df_rmse, df_task_net = load_results(load_folders)
+    df_rmse, df_task = load_results(load_folders)
     rmse_mean, rmse_stds = get_means_stds(df_rmse)
-    task_mean, task_stds = get_means_stds(df_task_net)
+    task_mean, task_stds = get_means_stds(df_task)
 
     fig, axes = plt.subplots(nrows=1, ncols=2)
     fig.set_size_inches(8.5, 3)
 
-    styles = [ ':', '--', ':', '-']
-    colors = [sns.color_palette()[i] for i in [4,2,3,1]]
+    styles = [ '-', '--', '-.']
+    colors = [sns.color_palette()[i] for i in [1,2]] + ['gray']
 
     ax = axes[0]
-    ax.set_axis_bgcolor("none")
+    ax.set_axis_bgcolor('none')
     for col, style, color in zip(rmse_mean.columns, styles, colors):
         rmse_mean[col].plot(
             ax=ax, lw=2, fmt=style, color=color, yerr=rmse_stds[col])
     ax.set_ylabel('RMSE')
 
     ax2 = axes[1]
-    ax2.set_axis_bgcolor("none")
+    ax2.set_axis_bgcolor('none')
     for col, style, color in zip(task_mean.columns, styles, colors):
-        task_mean[col].plot(
-            ax=ax2, lw=2, fmt=style, color=color, yerr=task_stds[col])
+        if col == 'Cost-weighted RMSE':
+            task_mean[col].plot(
+                ax=ax2, lw=2, style=style, color=color)
+            ax2.errorbar(task_mean.index+0.2, task_mean[col], 
+                yerr=task_stds[col], color=color, lw=0, elinewidth=2)
+        else:
+            task_mean[col].plot(
+                ax=ax2, lw=2, fmt=style, color=color, yerr=task_stds[col])
     ax2.set_ylabel('Task Loss')
 
     plt.tight_layout()
@@ -82,9 +85,9 @@ def plot_results(load_folders, save_folder):
         a.set_ylim(0, )
 
     # Joint x-axis label and legend
-    fig.text(0.5, 0.13, 'Hour of Day', ha='center', fontsize=11)
-    legend = ax.legend(loc='center left', bbox_to_anchor=(0, -0.4), 
-        shadow=False, ncol=7, fontsize=11, borderpad=0, frameon=False)
+    fig.text(0.5, 0.13, 'Hour of Day', ha='center', fontsize=12)
+    legend = ax.legend(loc='center left', bbox_to_anchor=(0.3, -0.4), 
+        shadow=False, ncol=7, fontsize=12, borderpad=0, frameon=False)
 
     fig.savefig(os.path.join(save_folder, 
         '{}.pdf'.format(save_folder)), dpi=100, encoding='pdf')

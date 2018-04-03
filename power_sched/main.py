@@ -72,6 +72,10 @@ def main():
             model_rmse, variables_rmse, X_train, Y_train)
         nets.eval_net("rmse_net", model_rmse, variables_rmse, params, save_folder)
 
+        # Run and eval task cost-weighted rmse-minimizing net (model defined/updated internally)
+        model_rmse_weighted = nets.run_weighted_rmse_net(X_train, Y_train, X_test, Y_test, params)
+        nets.eval_net("weighted_rmse_net", model_rmse_weighted, variables_rmse, params, save_folder)
+
         # Randomly construct hold-out set for task net training.
         th_frac = 0.8
         inds = np.random.permutation(X_train.shape[0])
