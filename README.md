@@ -43,12 +43,7 @@ experimental implementations.
 ## Setup and Dependencies
 
 + Python 3.x/numpy/scipy/[cvxpy](http://www.cvxpy.org/en/latest/)
-+ [PyTorch](https://pytorch.org)
-  + The code currently requires a source install from the master branch from
-    [our fork](https://github.com/locuslab/pytorch) for new batch triangular
-    factorization functions we have added.
-    We are currently working with the PyTorch team to get these new features
-    merged into Torch proper.
++ [PyTorch](https://pytorch.org) 0.3.0
 + [qpth](https://github.com/locuslab/qpth):
   *A fast QP solver for PyTorch released in conjunction with the paper 
   [OptNet: Differentiable Optimization as a Layer in Neural Networks](https://arxiv.org/abs/1703.00443).*
