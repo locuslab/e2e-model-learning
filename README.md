@@ -52,7 +52,7 @@ experimental implementations.
 + Optional: [bamos/setGPU](https://github.com/bamos/setGPU):
   A small library to set `CUDA_VISIBLE_DEVICES` on multi-GPU systems.
 
-**Note:** Experiments are currently not working after some library updates. We'll address this ASAP. 
+**Note:** Inventory stock problem experiments are currently not working after some library updates. We'll address this ASAP. 
 
 # Inventory Stock Problem (Newsvendor) Experiments
 
