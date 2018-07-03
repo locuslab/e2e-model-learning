@@ -1,7 +1,7 @@
 # Task-based End-to-end Model Learning
 
 This repository is by 
-[Priya L. Donti](https://www.linkedin.com/in/priya-donti-b9080585/),
+[Priya L. Donti](https://www.priyadonti.com),
 [Brandon Amos](http://bamos.github.io),
 and [J. Zico Kolter](http://zicokolter.com)
 and contains the [PyTorch](https://pytorch.org) source code to
