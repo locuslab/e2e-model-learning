@@ -1,4 +1,4 @@
-# Task-based End-to-end Model Learning
+# Task-based End-to-end Model Learning in Stochastic Optimization
 
 This repository is by 
 [Priya L. Donti](https://www.priyadonti.com),
@@ -13,7 +13,7 @@ please consider citing our paper.
 
 ```
 @article{donti2017task,
-  title={Task-based End-to-end Model Learning},
+  title={Task-based End-to-end Model Learning in Stochastic Optimization},
   author={Priya L. Donti and Brandon Amos and J. Zico Kolter},
   journal={arXiv preprint arXiv:1703.04529},
   year={2017}
