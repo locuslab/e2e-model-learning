@@ -6,7 +6,7 @@ This repository is by
 and [J. Zico Kolter](http://zicokolter.com)
 and contains the [PyTorch](https://pytorch.org) source code to
 reproduce the experiments in our paper
-[Task-based End-to-end Model Learning](https://arxiv.org/abs/1703.04529).
+[Task-based End-to-end Model Learning in Stochastic Optimization](https://arxiv.org/abs/1703.04529).
 
 If you find this repository helpful in your publications,
 please consider citing our paper.
