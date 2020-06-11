@@ -34,7 +34,7 @@ will be used. Specifically, we evaluate our approach in the context of
 (a) a generic inventory stock problem and (b) an electrical grid scheduling
 task based on over eight years of data from PJM.
 
-Please see our paper [Task-based End-to-end Model Learning](https://arxiv.org/abs/1703.04529)
+Please see our paper [Task-based End-to-end Model Learning in Stochastic Optimization](https://arxiv.org/abs/1703.04529)
 and the code in this repository ([locuslab/e2e-model-learning](https://github.com/locuslab/e2e-model-learning))
 for more details about the general approach proposed and our initial
 experimental implementations.
