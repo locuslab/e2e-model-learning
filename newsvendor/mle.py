@@ -3,12 +3,17 @@
 import cvxpy as cp
 import numpy as np
 
+# import sys
+# from IPython.core import ultratb
+# sys.excepthook = ultratb.FormattedTB(mode='Verbose',
+#      color_scheme='Linux', call_pdb=1)
+
 # Linear softmax regression given X, Y
 def linear_softmax_reg(X, Y, params):
     m, n = X.shape[0], X.shape[1]
-    Theta = cp.Variable(n, len(params['d']))
-    f = cp.sum_entries(cp.log_sum_exp(X*Theta, axis=1) -
-                       cp.sum_entries(cp.mul_elemwise(Y, X*Theta), axis=1)) / m
+    Theta = cp.Variable((n, len(params['d'])))
+    f = cp.sum(cp.log_sum_exp(X@Theta, axis=1) -
+                       cp.sum(cp.multiply(Y, X@Theta), axis=1)) / m
     lam = 1e-5 # regularization
     cp.Problem(cp.Minimize(f + lam * cp.sum_squares(Theta)), []).solve()
     Theta = np.asarray(Theta.value)
@@ -18,8 +23,8 @@ def linear_softmax_reg(X, Y, params):
 def newsvendor_opt(params, py):
     z = cp.Variable(1)
     d = params['d']
-    f = (params['c_lin'] * z + 0.5 * params['c_quad'] * cp.square(z) +
-        py.T * (params['b_lin'] * cp.pos(d-z) + 
+    f = (params['c_lin']*z + 0.5*params['c_quad']*cp.square(z) +
+        py.T @ (params['b_lin'] * cp.pos(d-z) + 
                 0.5 * params['b_quad'] * cp.square(cp.pos(d-z)) +
                 params['h_lin'] * cp.pos(z-d) +
                 0.5 * params['h_quad'] * cp.square(cp.pos(z-d)) ))
@@ -38,7 +43,7 @@ def f_obj(z, d, params):
 def newsvendor_eval(X, Y, Theta_lin, Theta_sq, params):
     m   = X.shape[0]
     # TODO: deal with overflow
-    py  = np.exp(X.dot(Theta_lin) + X.dot(Theta_sq) ** 2)
+    py  = np.exp(X@Theta_lin + (X@Theta_sq)**2)
     py /= np.sum(py, axis=1)[:,None]
 
     f_eval, f_opt, z_buy = np.zeros(m), np.zeros(m), np.zeros(m)

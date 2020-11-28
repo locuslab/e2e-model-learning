@@ -7,10 +7,6 @@ import scipy.io as sio
 import numpy as np
 
 import torch
-import torch.nn as nn
-from torch.autograd import Variable, Function
-import torch.optim as optim
-import torch.cuda
 
 import importlib
 try: import setGPU
@@ -19,6 +15,7 @@ except ImportError: pass
 import os
 
 import model_classes, nets, calc_stats
+from constants import *
 
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -30,8 +27,8 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 def main():
     parser = argparse.ArgumentParser(
         description='Run storage task net experiments.')
-    parser.add_argument('--save', type=str, required=True, 
-        metavar='save-folder', help='save folder path')
+    parser.add_argument('--save', type=str, 
+        metavar='save-folder', help='prefix to add to save path')
     parser.add_argument('--nRuns', type=int, default=10,
         metavar='runs', help='number of runs')
     parser.add_argument('--paramSet', type=int, choices=range(4), default=0,
@@ -39,9 +36,11 @@ def main():
     args = parser.parse_args()
 
 
-    save_folder_main = '{}-params{}'.format(args.save, args.paramSet)
+    save_folder_main = 'params{}'.format(args.paramSet) if args.save is None \
+        else '{}-params{}'.format(args.save, args.paramSet)
+    save_folder_main = os.path.join('results', save_folder_main)
 
-    setproctitle.setproctitle('pdonti.' + save_folder_main)
+    setproctitle.setproctitle('storage-{}'.format(args.paramSet))
 
     # Initialize problem parameters
     params = init_params(args.paramSet)
@@ -69,13 +68,17 @@ def main():
 
         # Run and eval rmse-minimizing net
         model_rmse = model_classes.Net(
-            tensors_task['X_train'], tensors_task['Y_train'], [200, 200], params['T']).cuda()
+            tensors_task['X_train'], tensors_task['Y_train'], [200, 200], params['T'])
+        if USE_GPU:
+            model_rmse = model_rmse.cuda()
         model_rmse = nets.run_rmse_net(model_rmse, loaders_task, params, tensors_task)
         nets.eval_net('rmse_net', model_rmse, loaders_task, params, save_folder)
 
         # Run and eval task-minimizing net
         model_task = model_classes.Net(
-            tensors_task['X_train'], tensors_task['Y_train'], [200, 200], params['T']).cuda()
+            tensors_task['X_train'], tensors_task['Y_train'], [200, 200], params['T'])
+        if USE_GPU:
+            model_task = model_task.cuda()
         model_task = nets.run_rmse_net(model_task, loaders_task, params, tensors_task)  # seed with rmse soln
         model_task = \
             nets.run_task_net(model_task, loaders_task, params, args, tensors_task)

@@ -1,6 +1,7 @@
 #/usr/bin/env python3
 
 import argparse
+import setproctitle
 
 import os
 import pandas as pd
@@ -14,33 +15,33 @@ try: import setGPU
 except ImportError: pass
 
 import torch
-from torch.autograd import Variable, Function
-import torch.cuda
-
-import setproctitle
 
 import model_classes, nets, plot
+from constants import *
 
-import sys
-from IPython.core import ultratb
-sys.excepthook = ultratb.FormattedTB(mode='Verbose',
-     color_scheme='Linux', call_pdb=1)
+# import sys
+# from IPython.core import ultratb
+# sys.excepthook = ultratb.FormattedTB(mode='Verbose',
+#      color_scheme='Linux', call_pdb=1)
 
 def main():
     parser = argparse.ArgumentParser(
         description='Run electricity scheduling task net experiments.')
-    parser.add_argument('--save', type=str, required=True, 
-        metavar='save-folder', help='save folder path')
+    parser.add_argument('--save', type=str, 
+        metavar='save-folder', help='prefix to add to save path')
     parser.add_argument('--nRuns', type=int, default=10,
         metavar='runs', help='number of runs')
     args = parser.parse_args()
 
-    setproctitle.setproctitle('pdonti.' + args.save)
+    setproctitle.setproctitle('power_sched')
 
     X1, Y1 = load_data_with_features('pjm_load_data_2008-11.txt')
     X2, Y2 = load_data_with_features('pjm_load_data_2012-16.txt')
 
     X = np.concatenate((X1, X2), axis=0)
+    X[:,:-1] = \
+        (X[:,:-1] - np.mean(X[:,:-1], axis=0)) / np.std(X[:,:-1], axis=0)
+    
     Y = np.concatenate((Y1, Y2), axis=0)
 
     # Train, test split.
@@ -49,16 +50,17 @@ def main():
     X_test, Y_test = X[n_tt:], Y[n_tt:]
 
     # Construct tensors (without intercepts).
-    X_train_ = Variable(torch.Tensor(X_train[:,:-1])).cuda()
-    Y_train_ = Variable(torch.Tensor(Y_train)).cuda()
-    X_test_ = Variable(torch.Tensor(X_test[:,:-1])).cuda()
-    Y_test_ = Variable(torch.Tensor(Y_test)).cuda()
+    X_train_ = torch.tensor(X_train[:,:-1], dtype=torch.float, device=DEVICE)
+    Y_train_ = torch.tensor(Y_train, dtype=torch.float, device=DEVICE)
+    X_test_ = torch.tensor(X_test[:,:-1], dtype=torch.float, device=DEVICE)
+    Y_test_ = torch.tensor(Y_test, dtype=torch.float, device=DEVICE)
     variables_rmse = {'X_train_': X_train_, 'Y_train_': Y_train_, 
                 'X_test_': X_test_, 'Y_test_': Y_test_}
 
+    base_save = 'results' if args.save is None else '{}-results'.format(args.save)
     for run in range(args.nRuns):
 
-        save_folder = os.path.join(args.save, str(run))
+        save_folder = os.path.join(base_save, str(run))
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
 
@@ -67,7 +69,8 @@ def main():
 
         # Run and eval rmse-minimizing net
         model_rmse = model_classes.Net(X_train[:,:-1], Y_train, [200, 200])
-        model_rmse.cuda()
+        if USE_GPU:
+            model_rmse = model_rmse.cuda()
         model_rmse = nets.run_rmse_net(
             model_rmse, variables_rmse, X_train, Y_train)
         nets.eval_net("rmse_net", model_rmse, variables_rmse, params, save_folder)
@@ -83,17 +86,18 @@ def main():
         hold_inds = inds[int(X_train.shape[0] * th_frac):]
         X_train2, X_hold2 = X_train[train_inds, :], X_train[hold_inds, :]
         Y_train2, Y_hold2 = Y_train[train_inds, :], Y_train[hold_inds, :]
-        X_train2_ = Variable(torch.Tensor(X_train2[:,:-1])).cuda()
-        Y_train2_ = Variable(torch.Tensor(Y_train2)).cuda()
-        X_hold2_ = Variable(torch.Tensor(X_hold2[:,:-1])).cuda()
-        Y_hold2_ = Variable(torch.Tensor(Y_hold2)).cuda()
+        X_train2_ = torch.tensor(X_train2[:,:-1], dtype=torch.float32, device=DEVICE)
+        Y_train2_ = torch.tensor(Y_train2, dtype=torch.float32, device=DEVICE)
+        X_hold2_ = torch.tensor(X_hold2[:,:-1], dtype=torch.float32, device=DEVICE)
+        Y_hold2_ = torch.tensor(Y_hold2, dtype=torch.float32, device=DEVICE)
         variables_task = {'X_train_': X_train2_, 'Y_train_': Y_train2_, 
                 'X_hold_': X_hold2_, 'Y_hold_': Y_hold2_,
                 'X_test_': X_test_, 'Y_test_': Y_test_}
 
         # Run and eval task-minimizing net, building off rmse net results.
         model_task = model_classes.Net(X_train2[:,:-1], Y_train2, [200, 200])
-        model_task.cuda()
+        if USE_GPU:
+            model_task = model_task.cuda()
         model_task = nets.run_rmse_net(
             model_task, variables_task, X_train2, Y_train2)
         model_task = nets.run_task_net(
@@ -101,7 +105,7 @@ def main():
         nets.eval_net("task_net", model_task, variables_task, params, save_folder)
 
     plot.plot_results(map(
-        lambda x: os.path.join(args.save, str(x)), range(args.nRuns)), args.save)
+        lambda x: os.path.join(base_save, str(x)), range(args.nRuns)), base_save)
 
 
 def load_data_with_features(filename):
@@ -122,7 +126,7 @@ def load_data_with_features(filename):
     df_temp = df_temp.transpose().fillna(method="ffill").transpose()
 
     holidays = USFederalHolidayCalendar().holidays(
-        start='2008-01-01', end='2014-12-31').to_pydatetime()
+        start='2008-01-01', end='2016-12-31').to_pydatetime()
     holiday_dates = set([h.date() for h in holidays])
 
     s = df_load.reset_index()["date"]
@@ -145,8 +149,8 @@ def load_data_with_features(filename):
                     df_temp.iloc[1:].values**3,     # future temp^3
                     df_feat.iloc[1:].values,        
                     np.ones((len(df_feat)-1, 1))]).astype(np.float64)
-    X[:,:-1] = \
-        (X[:,:-1] - np.mean(X[:,:-1], axis=0)) / np.std(X[:,:-1], axis=0)
+    # X[:,:-1] = \
+    #     (X[:,:-1] - np.mean(X[:,:-1], axis=0)) / np.std(X[:,:-1], axis=0)
 
     Y = df_load.iloc[1:].values
 

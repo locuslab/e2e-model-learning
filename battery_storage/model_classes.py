@@ -7,14 +7,12 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable, Function
-import torch.optim as optim
-import torch.cuda
 
-import qpth
 from qpth.qp import QPFunction
 
 from block import block
+
+from constants import *
 
 class Net(nn.Module):
     def __init__(self, X, Y, hidden_layer_sizes, T):
@@ -59,24 +57,31 @@ class ScheduleBattery(nn.Module):
         D1 = torch.cat([torch.eye(T-1), torch.zeros(1, T-1)], 0)
         D2 = torch.cat([torch.zeros(1, T-1), torch.eye(T-1)], 0)
         
-        self.Q = Variable(block([[eps * torch.eye(T), 0, 0],
+        self.Q = block([[eps * torch.eye(T), 0, 0],
                   [0, eps * torch.eye(T), 0],
-                  [0, 0, self.lam * torch.eye(T)]])).cuda()
+                  [0, 0, self.lam * torch.eye(T)]])
         
         Ae_list = [[torch.zeros(1,T), torch.zeros(1,T), torch.ones(1,1), torch.zeros(1,T-1)],
                    [ D1.t() * eff, -D1.t(), D1.t()-D2.t()]]
-        self.Ae = Variable(torch.cat(map(lambda x: torch.cat(x, 1), Ae_list), 0)).cuda()
-        self.be = Variable(torch.cat([(self.B/2) * torch.ones(1), torch.zeros(T-1)])).cuda()
+        self.Ae = torch.cat([torch.cat(x,1) for x in Ae_list], axis=0)
+        self.be = torch.cat([(self.B/2) * torch.ones(1), torch.zeros(T-1)])
 
-        self.A = Variable(
-            block([[torch.eye(T), 0, 0],
+        self.A = block([
+               [torch.eye(T), 0, 0],
                [-torch.eye(T), 0, 0],
                [0, torch.eye(T), 0],
                [0, -torch.eye(T), 0],
                [0, 0, torch.eye(T)],
-               [0, 0, -torch.eye(T)]])).cuda()
-        self.b = Variable(torch.Tensor(
-            [in_max]*T + [0]*T + [out_max]*T + [0]*T + [self.B]*T + [0]*T)).cuda()
+               [0, 0, -torch.eye(T)]])
+        self.b = torch.Tensor(
+            [in_max]*T + [0]*T + [out_max]*T + [0]*T + [self.B]*T + [0]*T)
+
+        if USE_GPU:
+            self.Q = self.Q.cuda()
+            self.Ae = self.Ae.cuda()
+            self.be = self.be.cuda()
+            self.A = self.A.cuda()
+            self.b = self.b.cuda()
 
         
     def forward(self, log_prices):
@@ -88,7 +93,7 @@ class ScheduleBattery(nn.Module):
         Q = self.Q.unsqueeze(0).expand(nBatch, self.Q.size(0), self.Q.size(1))
         c = torch.cat(
             [prices, -prices, 
-            -Variable(self.lam * self.B * torch.ones(T)).unsqueeze(0).expand(nBatch,T).cuda()], 
+            -(self.lam * self.B * torch.ones(T, device=DEVICE)).unsqueeze(0).expand(nBatch,T)], 
             1)
         A = self.A.unsqueeze(0).expand(nBatch, self.A.size(0), self.A.size(1))
         b = self.b.unsqueeze(0).expand(nBatch, self.b.size(0))

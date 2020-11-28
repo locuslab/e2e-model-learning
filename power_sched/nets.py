@@ -5,14 +5,11 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable, Function
 from torch.nn.parameter import Parameter
 import torch.optim as optim
-import torch.cuda
 
 import model_classes
-
-import ipdb
+from constants import *
 
 
 def task_loss(Y_sched, Y_actual, params):
@@ -32,7 +29,6 @@ def rmse_loss_weighted(mu_pred, Y_actual, weights):
     return ((weights * (mu_pred - Y_actual)**2).mean(dim=0).sqrt()).sum()
 
 
-# TODO: minibatching
 def run_rmse_net(model, variables, X_train, Y_train):
     opt = optim.Adam(model.parameters(), lr=1e-3)
 
@@ -48,7 +44,7 @@ def run_rmse_net(model, variables, X_train, Y_train):
         test_loss = nn.MSELoss()(
             model(variables['X_test_'])[0], variables['Y_test_'])
 
-        print(i, train_loss.data[0], test_loss.data[0])
+        print(i, train_loss.item(), test_loss.item())
 
     model.eval()
     model.set_sig(variables['X_train_'], variables['Y_train_'])
@@ -57,20 +53,21 @@ def run_rmse_net(model, variables, X_train, Y_train):
 
 
 def run_weighted_rmse_net(X_train, Y_train, X_test, Y_test, params):
-    weights = Variable(torch.ones(Y_train.shape), requires_grad=False).cuda()
+    weights = torch.ones(Y_train.shape, device=DEVICE)
     for i in range(10):
         model, weights2 = run_weighted_rmse_net_helper(X_train, Y_train, X_test, Y_test, params, weights, i)
-        weights = Variable(weights2.data, requires_grad=False)
+        weights = weights2.detach()
     return model
 
 def run_weighted_rmse_net_helper(X_train, Y_train, X_test, Y_test, params, weights, i):
-    X_train_ = Variable(torch.Tensor(X_train[:,:-1])).cuda()
-    Y_train_ = Variable(torch.Tensor(Y_train)).cuda()
-    X_test_ = Variable(torch.Tensor(X_test[:,:-1])).cuda()
-    Y_test_ = Variable(torch.Tensor(Y_test)).cuda()
+    X_train_ = torch.tensor(X_train[:,:-1], dtype=torch.float, device=DEVICE)
+    Y_train_ = torch.tensor(Y_train, dtype=torch.float, device=DEVICE)
+    X_test_ = torch.tensor(X_test[:,:-1], dtype=torch.float, device=DEVICE)
+    Y_test_ = torch.tensor(Y_test, dtype=torch.float, device=DEVICE)
 
     model = model_classes.Net(X_train[:,:-1], Y_train, [200, 200])
-    model.cuda()
+    if USE_GPU:
+        model = model.cuda()
     opt = optim.Adam(model.parameters(), lr=1e-3)
     solver = model_classes.SolveScheduling(params)
     for j in range(100):
@@ -83,19 +80,18 @@ def run_weighted_rmse_net_helper(X_train, Y_train, X_test, Y_test, params, weigh
     mu_pred_train, sig_pred_train = model(X_train_)
     Y_sched_train = solver(mu_pred_train.double(), sig_pred_train.double())
     weights2 = task_loss_no_mean(
-        Y_sched_train.float(), Y_train_, params).cuda()
+        Y_sched_train.float(), Y_train_, params)
+    if USE_GPU:
+        weights2 = weights2.cuda()
     model.set_sig(X_train_, Y_train_)
 
     return model, weights2
 
 def batch_train_weightrmse(batch_sz, epoch, X_train_t, Y_train_t, model, opt, weights_t):
 
-    batch_data_ = Variable(torch.Tensor(batch_sz, X_train_t.size(1)), 
-        requires_grad=False).cuda()
-    batch_targets_ = Variable(torch.Tensor(batch_sz, Y_train_t.size(1)), 
-        requires_grad=False).cuda()
-    batch_weights_ = Variable(torch.Tensor(batch_sz, weights_t.size(1)),
-        requires_grad=False).cuda()
+    batch_data_ = torch.empty(batch_sz, X_train_t.size(1), device=DEVICE)
+    batch_targets_ = torch.empty(batch_sz, Y_train_t.size(1), device=DEVICE)
+    batch_weights_ = torch.empty(batch_sz, weights_t.size(1), device=DEVICE)
 
     size = batch_sz
 
@@ -104,9 +100,9 @@ def batch_train_weightrmse(batch_sz, epoch, X_train_t, Y_train_t, model, opt, we
         # Deal with potentially incomplete (last) batch
         if i + batch_sz  > X_train_t.size(0):
             size = X_train_t.size(0) - i
-            batch_data_ = Variable(torch.Tensor(size, X_train_t.size(1)), requires_grad=False).cuda()
-            batch_targets_ = Variable(torch.Tensor(size, Y_train_t.size(1)), requires_grad=False).cuda()
-            batch_weights_ = Variable(torch.Tensor(size, weights_t.size(1)), requires_grad=False).cuda()
+            batch_data_ = torch.empty(size, X_train_t.size(1), device=DEVICE)
+            batch_targets_ = torch.empty(size, Y_train_t.size(1), device=DEVICE)
+            batch_weights_ = torch.empty(size, weights_t.size(1), device=DEVICE)
 
         batch_data_.data[:] = X_train_t[i:i+size]
         batch_targets_.data[:] = Y_train_t[i:i+size]
@@ -122,7 +118,6 @@ def batch_train_weightrmse(batch_sz, epoch, X_train_t, Y_train_t, model, opt, we
         print ('Epoch: {}, {}/{}'.format(epoch, i+batch_sz, X_train_t.size(0)))
        
 
-# TODO: minibatching
 def run_task_net(model, variables, params, X_train, Y_train, args):
     opt = optim.Adam(model.parameters(), lr=1e-4)
     solver = model_classes.SolveScheduling(params)
@@ -155,12 +150,12 @@ def run_task_net(model, variables, params, X_train, Y_train, args):
 
         opt.step()
 
-        print(i, train_loss.sum().data[0], test_loss.sum().data[0], 
-            hold_loss.sum().data[0])
+        print(i, train_loss.sum().item(), test_loss.sum().item(), 
+            hold_loss.sum().item())
 
 
         # Early stopping
-        hold_costs.append(hold_loss.sum().data[0])
+        hold_costs.append(hold_loss.sum().item())
         model_states.append(model.state_dict().copy())
         if i > 0 and i % num_stop_rounds == 0:
             idx = hold_costs.index(min(hold_costs))
@@ -169,7 +164,8 @@ def run_task_net(model, variables, params, X_train, Y_train, args):
                 best_model = model_classes.Net(
                     X_train[:,:-1], Y_train, [200, 200])
                 best_model.load_state_dict(model_states[idx])
-                best_model.cuda()
+                if USE_GPU:
+                    best_model = best_model.cuda()
                 return best_model
             else:
                 prev_min = hold_costs[idx]
@@ -179,7 +175,6 @@ def run_task_net(model, variables, params, X_train, Y_train, args):
     return model
 
 
-# TODO: minibatching
 def eval_net(which, model, variables, params, save_folder):
     solver = model_classes.SolveScheduling(params)
 

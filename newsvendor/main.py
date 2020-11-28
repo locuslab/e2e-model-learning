@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 
-import argparse
-
-import cvxpy as cp
 import numpy as np
-
 import os
-
 from datetime import datetime
+
+import argparse
+import setproctitle
 
 import importlib
 try: import setGPU
 except ImportError: pass
 
 import torch
-from torch.autograd import Variable
-
-import setproctitle
 
 import mle, mle_net, policy_net, task_net, plot
+
+# import sys
+# from IPython.core import ultratb
+# sys.excepthook = ultratb.FormattedTB(mode='Verbose',
+#      color_scheme='Linux', call_pdb=1)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Run newsvendor task net experiments.')
-    parser.add_argument('--save', type=str, required=True, 
-        metavar='save-folder', help='save folder path')
+    parser.add_argument('--save', type=str,
+        metavar='save-folder', help='prefix to add to save path')
     parser.add_argument('--nRuns', type=int, default=10,
         metavar='runs', help='number of runs')
     parser.add_argument('--trueModel', type=str, 
@@ -33,10 +33,7 @@ def main():
         help='true y|x distribution')
     args = parser.parse_args()
 
-    setproctitle.setproctitle('pdonti.' + args.save + args.trueModel)
-
-    if not os.path.exists(args.save):
-        os.makedirs(args.save)
+    setproctitle.setproctitle('newsvendor-{}'.format(args.trueModel))
 
     # Cost params for newsvendor task loss
     params = init_newsvendor_params()
@@ -45,7 +42,8 @@ def main():
 
     for true_model in true_model_types:
 
-        save_folder = os.path.join(args.save, true_model)
+        save_folder = os.path.join('results', true_model) if args.save is None \
+            else os.path.join('{}-results'.format(args.save), true_model)
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
 
@@ -99,7 +97,6 @@ def main():
                 except Exception as e:
                     log_error_and_write(e, save_folder, m, run, 'mle-linear', results_file)
 
-
                 # Nonlinear MLE net
                 try:
                     mle_nonlin_score = mle_net.run_mle_net(
@@ -112,7 +109,6 @@ def main():
                     log_error_and_write(e, save_folder, m, run, 
                         'mle-nonlinear', results_file)
 
-
                 # Pure end-to-end policy neural net (linear)
                 try:
                     policy_lin_score = policy_net.run_policy_net(
@@ -124,7 +120,6 @@ def main():
                 except Exception as e:
                     log_error_and_write(e, save_folder, m, run, 'policy-linear', results_file)
 
-
                 # Pure end-to-end policy neural net (nonlinear)
                 try:
                     policy_nonlin_score = policy_net.run_policy_net(
@@ -135,7 +130,6 @@ def main():
                         f.write('{},'.format(policy_nonlin_score))
                 except Exception as e:
                     log_error_and_write(e, save_folder, m, run, 'policy-nonlinear', results_file)
-
 
                 # Model-based end-to-end model (linear)
                 try:

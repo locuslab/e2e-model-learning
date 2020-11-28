@@ -2,13 +2,17 @@
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable, Function
 import torch.optim as optim
 import operator
-import torch.cuda
 from functools import reduce
 
 import batch
+from constants import *
+
+# import sys
+# from IPython.core import ultratb
+# sys.excepthook = ultratb.FormattedTB(mode='Verbose',
+#      color_scheme='Linux', call_pdb=1)
 
 def run_policy_net(X_train, Y_train, X_test, Y_test, params, is_nonlinear=False):
 
@@ -19,21 +23,23 @@ def run_policy_net(X_train, Y_train, X_test, Y_test, params, is_nonlinear=False)
                                         nn.ReLU(), nn.Dropout(p=0.2)]   # TODO: Why is this 0.2? (others are 0.5)
                           for a,b in zip(layer_sizes[0:-2], layer_sizes[1:-1])])
         layers += [nn.Linear(layer_sizes[-2], layer_sizes[-1])]
-        model = nn.Sequential(*layers).cuda()
+        model = nn.Sequential(*layers)
         step_size = 1e-3
     else:
         # Linear model, use ADAM step size 1e-2
         model = nn.Sequential(
             nn.Linear(params['n'], 1)
-        ).cuda()
+        )
         step_size = 1e-2
 
+    if USE_GPU:
+        model = model.cuda()
 
-    X_train_t = torch.Tensor(X_train).cuda()
-    Y_train_t = torch.Tensor(Y_train).cuda()
-    X_test_t  = torch.Tensor(X_test).cuda()
-    Y_test_t  = torch.Tensor(Y_test).cuda()
-    d_ = Variable(torch.Tensor(params['d'])).cuda()
+    X_train_t = torch.tensor(X_train, dtype=torch.float, device=DEVICE)
+    Y_train_t = torch.tensor(Y_train, dtype=torch.float, device=DEVICE)
+    X_test_t  = torch.tensor(X_test, dtype=torch.float, device=DEVICE)
+    Y_test_t  = torch.tensor(Y_test, dtype=torch.float, device=DEVICE)
+    d_ = torch.tensor(params['d'], dtype=torch.float, device=DEVICE)
 
     # Expected inventory cost
     cost = lambda Z, Y : (params['c_lin'] * Z + 0.5 * params['c_quad'] * (Z**2) +
@@ -53,9 +59,9 @@ def run_policy_net(X_train, Y_train, X_test, Y_test, params, is_nonlinear=False)
         model.train()
         train_cost = batch_train(150, i, X_train_t, Y_train_t, model, opt, cost)
 
-        print(train_cost.data[0], test_cost.data[0])
+        print(train_cost.item(), test_cost.item())
 
-    return test_cost.data[0]
+    return test_cost.item()
 
 
 def batch_train(batch_sz, epoch, X_train_t, Y_train_t, model, opt, cost_fn):
@@ -87,6 +93,6 @@ def batch_train(batch_sz, epoch, X_train_t, Y_train_t, model, opt, cost_fn):
         print('Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.4f}'.format(
             epoch, i+size, X_train_t.size(0),
             float(i+size)/X_train_t.size(0)*100,
-            batch_cost.data[0]))
+            batch_cost.item()))
 
     return train_cost

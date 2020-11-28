@@ -2,11 +2,10 @@
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable, Function
 import torch.optim as optim
-import torch.cuda
 
 import model_classes
+from constants import *
 
 import os
 
@@ -48,11 +47,14 @@ def run_rmse_net(model, loaders, params, tensors_task):
         m_train = 0
 
         for (batch, (X_train, Y_train)) in enumerate(loaders['train']):
-            X_train_, Y_train_ = (Variable(X_train.cuda()), Variable(Y_train.cuda()))
+            if USE_GPU:
+                X_train_, Y_train_ = X_train.cuda(), Y_train.cuda()
+            else:
+                X_train_, Y_train_ = X_train, Y_train
 
             opt.zero_grad()
             train_loss = nn.MSELoss()(model(X_train_), Y_train_)
-            total_train_loss += train_loss.data[0] * X_train_.size(0)
+            total_train_loss += train_loss.item() * X_train_.size(0)
             m_train += X_train_.size(0)
             train_loss.backward()
             opt.step()
@@ -64,19 +66,26 @@ def run_rmse_net(model, loaders, params, tensors_task):
         m_test = 0
 
         for (batch, (X_test, Y_test)) in enumerate(loaders['test']):
-            X_test_, Y_test_ = (Variable(X_test.cuda()), Variable(Y_test.cuda()))
+            if USE_GPU:
+                X_test_, Y_test_ = X_test.cuda(), Y_test.cuda()
+            else:
+                X_test_, Y_test_ = X_test, Y_test
 
             test_loss = nn.MSELoss()(model(X_test_), Y_test_)
-            total_test_loss += test_loss.data[0] * X_test_.size(0)
+            total_test_loss += test_loss.item() * X_test_.size(0)
             m_test += X_test_.size(0)
 
         model.eval()
         total_hold_loss = 0
         m_hold = 0
         for (batch, (X_hold, Y_hold)) in enumerate(loaders['hold']):
-            X_hold_, Y_hold_ = (Variable(X_hold).cuda(), Variable(Y_hold).cuda())
+            if USE_GPU:
+                X_hold_, Y_hold_ = X_hold.cuda(), Y_hold.cuda()
+            else:
+                X_hold_, Y_hold_ = X_hold, Y_hold
+
             hold_loss = nn.MSELoss()(model(X_hold_), Y_hold_)
-            total_hold_loss += hold_loss.data[0] * X_hold_.size(0)
+            total_hold_loss += hold_loss.item() * X_hold_.size(0)
             m_hold += X_hold_.size(0)
 
         print(i, total_train_loss/m_train, total_test_loss/m_test, total_hold_loss/m_hold)
@@ -93,7 +102,8 @@ def run_rmse_net(model, loaders, params, tensors_task):
                 best_model = model_classes.Net(
                     tensors_task['X_train'], tensors_task['Y_train'], [200, 200], params['T'])
                 best_model.load_state_dict(model_states[idx])
-                best_model = best_model.cuda()
+                if USE_GPU:
+                    best_model = best_model.cuda()
 
                 return best_model
             else:
@@ -122,10 +132,11 @@ def run_task_net(model, loader, params, args, tensors_task):
         m_train = 0
         for (batch, (X_train, Y_train)) in enumerate(loader['train']):
             opt.zero_grad()
-            X_train, Y_train = (Variable(X_train).cuda(), Variable(Y_train).cuda())
+            if USE_GPU:
+                X_train, Y_train = X_train.cuda(), Y_train.cuda()
             preds_train = model(X_train)
             train_loss = task_loss(solver(preds_train), Y_train, params).sum()
-            total_train_loss += train_loss.data[0] * X_train.size(0)
+            total_train_loss += train_loss.item() * X_train.size(0)
             m_train += X_train.size(0)
             train_loss.backward()
 
@@ -134,10 +145,11 @@ def run_task_net(model, loader, params, args, tensors_task):
         total_test_loss = 0
         m_test = 0
         for (batch, (X_test, Y_test)) in enumerate(loader['test']):
-            X_test, Y_test = (Variable(X_test).cuda(), Variable(Y_test).cuda())
+            if USE_GPU:
+                X_test, Y_test = X_test.cuda(), Y_test.cuda()
             preds_test = model(X_test)
             test_loss = task_loss(solver(preds_test), Y_test, params).sum()
-            total_test_loss += test_loss.data[0] * X_test.size(0)
+            total_test_loss += test_loss.item() * X_test.size(0)
             m_test += X_test.size(0)
 
         # hold
@@ -145,10 +157,11 @@ def run_task_net(model, loader, params, args, tensors_task):
         total_hold_loss = 0
         m_hold = 0
         for (batch, (X_hold, Y_hold)) in enumerate(loader['hold']):
-            X_hold, Y_hold = (Variable(X_hold).cuda(), Variable(Y_hold).cuda())
+            if USE_GPU:
+                X_hold, Y_hold = X_hold.cuda(), Y_hold.cuda()
             preds_hold = model(X_hold)
             hold_loss = task_loss(solver(preds_hold), Y_hold, params).sum()
-            total_hold_loss += hold_loss.data[0] * X_hold.size(0)
+            total_hold_loss += hold_loss.item() * X_hold.size(0)
             m_hold += X_hold.size(0)
 
         print(i, total_train_loss/m_train, total_test_loss/m_test, total_hold_loss/m_hold)
@@ -164,7 +177,8 @@ def run_task_net(model, loader, params, args, tensors_task):
                 best_model = model_classes.Net(
                     tensors_task['X_train'], tensors_task['Y_train'], [200, 200], params['T'])
                 best_model.load_state_dict(model_states[idx])
-                best_model = best_model.cuda()
+                if USE_GPU:
+                    best_model = best_model.cuda()
 
                 return best_model
             else:
@@ -176,16 +190,19 @@ def run_task_net(model, loader, params, args, tensors_task):
 
 
 def eval_for_loaders(which, model, loaders, params, save_folder, loader_label):
-    total_loss_rmse = torch.zeros(params['T']).cuda()
-    total_loss_task = torch.zeros(params['T']).cuda()
-    total_loss_task_2 = torch.zeros(params['T']).cuda()
-    all_preds = torch.zeros(1, params['T']).cuda()
+    total_loss_rmse = torch.zeros(params['T'], device=DEVICE)
+    total_loss_task = torch.zeros(params['T'], device=DEVICE)
+    total_loss_task_2 = torch.zeros(params['T'], device=DEVICE)
+    all_preds = torch.zeros(1, params['T'], device=DEVICE)
 
-    solver = model_classes.ScheduleBattery(params).cuda()
+    solver = model_classes.ScheduleBattery(params)
+    if USE_GPU:
+        solver = solver.cuda()
 
     m = 0
     for (batch, (X, y)) in enumerate(loaders[loader_label]):
-        X, y = (Variable(X.cuda()), Variable(y.cuda()))
+        if USE_GPU:
+            X, y = X.cuda(), y.cuda()
         preds = model(X)
 
         all_preds = torch.cat([all_preds, preds.data], 0)

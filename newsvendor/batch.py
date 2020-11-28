@@ -1,27 +1,23 @@
-import numpy as np
-import operator
-from functools import reduce
+#!/usr/bin/env python3
 
 import torch
-import torch.nn as nn
-from torch.autograd import Variable, Function
-import torch.optim as optim
-import torch.cuda
+from constants import *
 
-from block import block
+# import sys
+# from IPython.core import ultratb
+# sys.excepthook = ultratb.FormattedTB(mode='Verbose',
+#      color_scheme='Linux', call_pdb=1)
 
 def get_vars(batch_sz, X_test_t, Y_test_t):
-    batch_data_ = Variable(torch.Tensor(batch_sz, X_test_t.size(1)), 
-        requires_grad=False).cuda()
-    batch_targets_ = Variable(torch.Tensor(batch_sz, Y_test_t.size(1)), 
-        requires_grad=False).cuda()
+    batch_data_ = torch.empty(batch_sz, X_test_t.size(1), device=DEVICE)
+    batch_targets_ = torch.empty(batch_sz, Y_test_t.size(1), device=DEVICE)
+
     return batch_data_, batch_targets_
 
 def get_vars_scalar_out(batch_sz, X_test_t, Y_test_t):
-    batch_data_ = Variable(torch.Tensor(batch_sz, X_test_t.size(1)), 
-        requires_grad=False).cuda()
-    batch_targets_ = Variable(torch.LongTensor(batch_sz),
-        requires_grad=False).cuda()
+    batch_data_ = torch.empty(batch_sz, X_test_t.size(1), device=DEVICE)
+    batch_targets_ = torch.empty(batch_sz, dtype=torch.long, device=DEVICE)
+
     return batch_data_, batch_targets_
 
 # General batch evaluation
@@ -52,7 +48,7 @@ def get_cost_helper(batch_sz, epoch, model, X_test_t, Y_test_t,
         test_cost += (batch_cost - test_cost) * size / (i + size)
 
     print('TEST SET RESULTS:' + ' ' * 20)
-    print('Average loss: {:.4f}'.format(test_cost.data[0]))
+    print('Average loss: {:.4f}'.format(test_cost.item()))
 
     return test_cost
 

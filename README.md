@@ -12,10 +12,11 @@ If you find this repository helpful in your publications,
 please consider citing our paper.
 
 ```
-@article{donti2017task,
-  title={Task-based End-to-end Model Learning in Stochastic Optimization},
-  author={Priya L. Donti and Brandon Amos and J. Zico Kolter},
-  journal={arXiv preprint arXiv:1703.04529},
+@inproceedings{donti2017task,
+  title={Task-based end-to-end model learning in stochastic optimization},
+  author={Donti, Priya and Amos, Brandon and Kolter, J Zico},
+  booktitle={Advances in Neural Information Processing Systems},
+  pages={5484--5494},
   year={2017}
 }
 ```
@@ -42,22 +43,23 @@ experimental implementations.
 
 ## Setup and Dependencies
 
-+ Python 3.x/numpy/scipy/[cvxpy](http://www.cvxpy.org/en/latest/)
-+ [PyTorch](https://pytorch.org) 0.3.0
-+ [qpth](https://github.com/locuslab/qpth):
++ Python 3.x/numpy/scipy
++ [cvxpy](http://www.cvxpy.org/en/latest/) 1.x
++ [PyTorch](https://pytorch.org) 1.x
++ [qpth](https://github.com/locuslab/qpth) 0.0.15:
   *A fast QP solver for PyTorch released in conjunction with the paper 
   [OptNet: Differentiable Optimization as a Layer in Neural Networks](https://arxiv.org/abs/1703.00443).*
 + [bamos/block](https://github.com/bamos/block):
   *An intelligent block matrix library for numpy, PyTorch, and beyond.*
++ pandas/matplotlib/seaborn
 + Optional: [bamos/setGPU](https://github.com/bamos/setGPU):
   A small library to set `CUDA_VISIBLE_DEVICES` on multi-GPU systems.
-
-**Note:** Inventory stock problem experiments are currently not working after some library updates. We'll address this ASAP. 
++ Optional: setproctitle: A library to set process names.
 
 # Inventory Stock Problem (Newsvendor) Experiments
 
-+ Experiments considering a "conditional" variation of the inventory stock
-  problem. Problem instances are generated via random sampling.
+Experiments considering a "conditional" variation of the inventory stock problem. 
+Problem instances are generated via random sampling.
 
 ```
 newsvendor
@@ -67,15 +69,16 @@ newsvendor
 ├── mle_net.py - Functions for nonlinear maximum likelihood estimation approach.
 ├── policy_net.py - Functions for end-to-end neural network policy model.
 ├── batch.py - Helper functions for minibatched evaluation.
-└── plot.py - Plot experimental results.
+├── plot.py - Plot experimental results.
+└── constants.py - Constants to set GPU vs. CPU.
 ```
 
 # Load Forecasting and Generator Scheduling Experiments
 
-+ Experiments considering a realistic grid-scheduling task, in which
-  electricity generation is scheduled based on some (unknown) distribution
-  over electricity demand. Historical load data for these experiments were obtained from
-  [PJM](http://www.pjm.com/markets-and-operations/ops-analysis/historical-load-data.aspx).
+Experiments considering a realistic grid-scheduling task, in which
+electricity generation is scheduled based on some (unknown) distribution
+over electricity demand. Historical load data for these experiments were obtained from
+[PJM](http://www.pjm.com/markets-and-operations/ops-analysis/historical-load-data.aspx).
 
 ```
 power_sched
@@ -83,16 +86,17 @@ power_sched
 ├── model_classes.py - Models used for experiments.
 ├── nets.py - Functions for RMSE, cost-weighted RMSE, and task nets.
 ├── plot.py - Plot experimental results.
+├── constants.py - Constants to set GPU vs. CPU.
 └── pjm_load_data_*.txt - Historical load data from PJM.
 ```
 
 # Price Forecasting and Battery Storage Experiments
 
-+ Experiments considering a realistic battery arbitrage task, in which
-  a power grid-connected battery generates a charge/discharge schedule 
-  based on some (unknown) distribution
-  over energy prices. Historical energy price data for these experiments were obtained from
-  [PJM](http://www.pjm.com/markets-and-operations/energy/real-time/monthlylmp.aspx).
+Experiments considering a realistic battery arbitrage task, in which
+a power grid-connected battery generates a charge/discharge schedule 
+based on some (unknown) distribution
+over energy prices. Historical energy price data for these experiments were obtained from
+[PJM](http://www.pjm.com/markets-and-operations/energy/real-time/monthlylmp.aspx).
 
 ```
 battery_storage
@@ -100,9 +104,9 @@ battery_storage
 ├── model_classes.py - Models used for experiments.
 ├── nets.py - Functions for RMSE and task nets.
 ├── calc_stats.py - Calculate experimental result stats.
+├── constants.py - Constants to set GPU vs. CPU.
 └── storage_data.csv - Historical energy price data from PJM.
 ```
-
 
 ### Acknowledgments
 

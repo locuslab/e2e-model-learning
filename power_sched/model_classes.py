@@ -7,15 +7,12 @@ from functools import reduce
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable, Function
+from torch.autograd import Function
 from torch.nn.parameter import Parameter
 import torch.optim as optim
-import torch.cuda
 
-import qpth
 from qpth.qp import QPFunction
-
-import ipdb
+from constants import *
 
 class Net(nn.Module):
     def __init__(self, X, Y, hidden_layer_sizes):
@@ -38,7 +35,7 @@ class Net(nn.Module):
                 for a,b in zip(layer_sizes[0:-1], layer_sizes[1:])])
         layers += [nn.Linear(layer_sizes[-1], Y.shape[1])]
         self.net = nn.Sequential(*layers)
-        self.sig = Parameter(torch.ones(1, Y.shape[1]).cuda())
+        self.sig = Parameter(torch.ones(1, Y.shape[1], device=DEVICE))
         
     def forward(self, x):
         return self.lin(x) + self.net(x), \
@@ -47,55 +44,63 @@ class Net(nn.Module):
     def set_sig(self, X, Y):
         Y_pred = self.lin(X) + self.net(X)
         var = torch.mean((Y_pred-Y)**2, 0)
-        self.sig.data = torch.sqrt(var).cuda().data.unsqueeze(0)
+        self.sig.data = torch.sqrt(var).data.unsqueeze(0)
 
 
-class GLinearApprox(Function):
+def GLinearApprox(gamma_under, gamma_over):
     """ Linear (gradient) approximation of G function at z"""
-    def __init__(self, gamma_under, gamma_over):
-        self.gamma_under = gamma_under
-        self.gamma_over = gamma_over
-    
-    def forward(self, z, mu, sig):
-        self.save_for_backward(z, mu, sig)
-        p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
-        return torch.DoubleTensor((self.gamma_under + self.gamma_over) * p.cdf(
-            z.cpu().numpy()) - self.gamma_under).cuda()
-    
-    def backward(self, grad_output):
-        z, mu, sig = self.saved_tensors
-        p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
-        pz = torch.DoubleTensor(p.pdf(z.cpu().numpy())).cuda()
+    class GLinearApproxFn(Function):
+        @staticmethod    
+        def forward(ctx, z, mu, sig):
+            ctx.save_for_backward(z, mu, sig)
+            p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
+            res = torch.DoubleTensor((gamma_under + gamma_over) * p.cdf(
+                z.cpu().numpy()) - gamma_under)
+            if USE_GPU:
+                res = res.cuda()
+            return res
         
-        dz = (self.gamma_under + self.gamma_over) * pz
-        dmu = -dz
-        dsig = -(self.gamma_under + self.gamma_over)*(z-mu) / sig * pz
-        return grad_output * dz, grad_output * dmu, grad_output * dsig
+        @staticmethod
+        def backward(ctx, grad_output):
+            z, mu, sig = ctx.saved_tensors
+            p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
+            pz = torch.tensor(p.pdf(z.cpu().numpy()), dtype=torch.double, device=DEVICE)
+            
+            dz = (gamma_under + gamma_over) * pz
+            dmu = -dz
+            dsig = -(gamma_under + gamma_over)*(z-mu) / sig * pz
+            return grad_output * dz, grad_output * dmu, grad_output * dsig
+
+    return GLinearApproxFn.apply
 
 
-class GQuadraticApprox(Function):
+def GQuadraticApprox(gamma_under, gamma_over):
     """ Quadratic (gradient) approximation of G function at z"""
-    def __init__(self, gamma_under, gamma_over):
-        self.gamma_under = gamma_under
-        self.gamma_over = gamma_over
-    
-    def forward(self, z, mu, sig):
-        self.save_for_backward(z, mu, sig)
-        p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
-        return torch.DoubleTensor((self.gamma_under + self.gamma_over) * p.pdf(
-            z.cpu().numpy())).cuda()
-    
-    def backward(self, grad_output):
-        z, mu, sig = self.saved_tensors
-        p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
-        pz = torch.DoubleTensor(p.pdf(z.cpu().numpy())).cuda()
+    class GQuadraticApproxFn(Function):
+        @staticmethod
+        def forward(ctx, z, mu, sig):
+            ctx.save_for_backward(z, mu, sig)
+            p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
+            res = torch.DoubleTensor((gamma_under + gamma_over) * p.pdf(
+                z.cpu().numpy()))
+            if USE_GPU:
+                res = res.cuda()
+            return res
         
-        dz = -(self.gamma_under + self.gamma_over) * (z-mu) / (sig**2) * pz
-        dmu = -dz
-        dsig = (self.gamma_under + self.gamma_over) * ((z-mu)**2 - sig**2) / \
-            (sig**3) * pz
-        
-        return grad_output * dz, grad_output * dmu, grad_output * dsig
+        @staticmethod
+        def backward(ctx, grad_output):
+            z, mu, sig = ctx.saved_tensors
+            p = st.norm(mu.cpu().numpy(),sig.cpu().numpy())
+            pz = torch.tensor(p.pdf(z.cpu().numpy()), dtype=torch.double, device=DEVICE)
+            
+            dz = -(gamma_under + gamma_over) * (z-mu) / (sig**2) * pz
+            dmu = -dz
+            dsig = (gamma_under + gamma_over) * ((z-mu)**2 - sig**2) / \
+                (sig**3) * pz
+            
+            return grad_output * dz, grad_output * dmu, grad_output * dsig
+
+    return GQuadraticApproxFn.apply
 
 
 class SolveSchedulingQP(nn.Module):
@@ -105,10 +110,11 @@ class SolveSchedulingQP(nn.Module):
         self.c_ramp = params["c_ramp"]
         self.n = params["n"]
         D = np.eye(self.n - 1, self.n) - np.eye(self.n - 1, self.n, 1)
-        self.G = Variable(torch.DoubleTensor(np.vstack([D,-D])).cuda())
-        self.h = Variable((self.c_ramp * torch.ones((self.n - 1) * 2))\
-            .double().cuda())
-        self.e = Variable(torch.Tensor().double().cuda())
+        self.G = torch.tensor(np.vstack([D,-D]), dtype=torch.double, device=DEVICE)
+        self.h = (self.c_ramp * torch.ones((self.n - 1) * 2, device=DEVICE)).double()
+        self.e = torch.DoubleTensor()
+        if USE_GPU:
+            self.e = self.e.cuda()
         
     def forward(self, z0, mu, dg, d2g):
         nBatch, n = z0.size()
@@ -133,26 +139,27 @@ class SolveScheduling(nn.Module):
         self.n = params["n"]
         
         D = np.eye(self.n - 1, self.n) - np.eye(self.n - 1, self.n, 1)
-        self.G = Variable(torch.DoubleTensor(np.vstack([D, -D])).cuda())
-        self.h = Variable((self.c_ramp * torch.ones((self.n - 1) * 2))\
-            .double().cuda())
-        self.e = Variable(torch.Tensor().double().cuda())
+        self.G = torch.tensor(np.vstack([D,-D]), dtype=torch.double, device=DEVICE)
+        self.h = (self.c_ramp * torch.ones((self.n - 1) * 2, device=DEVICE)).double()
+        self.e = torch.DoubleTensor()
+        if USE_GPU:
+            self.e = self.e.cuda()
         
     def forward(self, mu, sig):
         nBatch, n = mu.size()
         
         # Find the solution via sequential quadratic programming, 
         # not preserving gradients
-        z0 = Variable(1. * mu.data, requires_grad=False)
-        mu0 = Variable(1. * mu.data, requires_grad=False)
-        sig0 = Variable(1. * sig.data, requires_grad=False)
+        z0 = mu.detach() # Variable(1. * mu.data, requires_grad=False)
+        mu0 = mu.detach() # Variable(1. * mu.data, requires_grad=False)
+        sig0 = sig.detach() # Variable(1. * sig.data, requires_grad=False)
         for i in range(20):
             dg = GLinearApprox(self.params["gamma_under"], 
                 self.params["gamma_over"])(z0, mu0, sig0)
             d2g = GQuadraticApprox(self.params["gamma_under"], 
                 self.params["gamma_over"])(z0, mu0, sig0)
             z0_new = SolveSchedulingQP(self.params)(z0, mu0, dg, d2g)
-            solution_diff = (z0-z0_new).norm().data[0]
+            solution_diff = (z0-z0_new).norm().item()
             print("+ SQP Iter: {}, Solution diff = {}".format(i, solution_diff))
             z0 = z0_new
             if solution_diff < 1e-10:
