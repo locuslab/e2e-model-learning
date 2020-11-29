@@ -55,14 +55,14 @@ def plot_results(load_folders, save_folder):
     colors = [sns.color_palette()[i] for i in [1,2]] + ['gray']
 
     ax = axes[0]
-    ax.set_axis_bgcolor('none')
+    # ax.set_axis_bgcolor('none')
     for col, style, color in zip(rmse_mean.columns, styles, colors):
         rmse_mean[col].plot(
             ax=ax, lw=2, fmt=style, color=color, yerr=rmse_stds[col])
     ax.set_ylabel('RMSE')
 
     ax2 = axes[1]
-    ax2.set_axis_bgcolor('none')
+    # ax2.set_axis_bgcolor('none')
     for col, style, color in zip(task_mean.columns, styles, colors):
         if col == 'Cost-weighted RMSE':
             task_mean[col].plot(

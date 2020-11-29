@@ -12,6 +12,7 @@ import model_classes
 from constants import *
 
 
+
 def task_loss(Y_sched, Y_actual, params):
     return (params["gamma_under"] * torch.clamp(Y_actual - Y_sched, min=0) + 
             params["gamma_over"] * torch.clamp(Y_sched - Y_actual, min=0) + 
@@ -219,11 +220,11 @@ def eval_net(which, model, variables, params, save_folder):
         hold_loss_task = task_loss(
             Y_sched_hold.float(), variables['Y_hold_'], params)
 
-    torch.save(train_loss_task.data, 
+    torch.save(train_loss_task.detach().cpu().numpy(), 
         os.path.join(save_folder, '{}_train_task'.format(which)))
-    torch.save(test_loss_task.data, 
+    torch.save(test_loss_task.detach().cpu().numpy(), 
         os.path.join(save_folder, '{}_test_task'.format(which)))
 
     if (which == "task_net"):
-        torch.save(hold_loss_task.data, 
+        torch.save(hold_loss_task.detach().cpu().numpy(), 
             os.path.join(save_folder, '{}_hold_task'.format(which)))
